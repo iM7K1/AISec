@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SecureBank-AI {% if secure_mode %}[SECURE]{% else %}[VULNERABLE]{% endif %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <header class="topbar {% if secure_mode %}secure{% else %}vuln{% endif %}">
+    <div class="brand">🏦 SecureBank<span>-AI</span></div>
+    <div class="mode-badge">
+      {% if secure_mode %}SECURE MODE{% else %}VULNERABLE MODE{% endif %}
+    </div>
+    <nav>
+      {% if session.get('user_id') %}
+        <a href="{{ url_for('dashboard') }}">Dashboard</a>
+        <a href="{{ url_for('profile') }}">Profile</a>
+        <a href="{{ url_for('logout') }}">Logout</a>
+      {% endif %}
+    </nav>
+  </header>
+
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+
+  {% if session.get('user_id') %}
+  <!-- Chatbot widget -->
+  <div id="chat-widget">
+    <div id="chat-header">🤖 AI Assistant</div>
+    <div id="chat-messages"></div>
+    <form id="chat-form">
+      <input id="chat-input" autocomplete="off" placeholder="Ask me about your account...">
+      <button type="submit">Send</button>
+    </form>
+  </div>
+  <script src="{{ url_for('static', filename='chat.js') }}"></script>
+  {% endif %}
+</body>
+</html>

@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <h2>Welcome, {{ user.full_name }}</h2>
+  <p class="role">Role: {{ user.role }} &middot; Account #{{ user.id }}</p>
+  <div class="balance">Balance: <strong>{{ user.balance }} SAR</strong></div>
+</div>
+
+<div class="card">
+  <h3>Your transactions</h3>
+  <table>
+    <tr><th>Amount</th><th>Note</th></tr>
+    {% for t in txns %}
+      <tr><td>{{ t.amount }} SAR</td><td>{{ t.note }}</td></tr>
+    {% else %}
+      <tr><td colspan="2">No transactions.</td></tr>
+    {% endfor %}
+  </table>
+</div>
+{% endblock %}
