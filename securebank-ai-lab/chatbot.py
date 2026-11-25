@@ -341,8 +341,14 @@ def _run_simulated(message, session_user):
 def run_agent(message, session_user):
     """Returns (reply_text, allow_html). Uses Ollama; falls back if it's down."""
     try:
-        return _run_ollama(message, session_user)
+        reply, _ = _run_ollama(message, session_user)
     except (urllib.error.URLError, OSError, ValueError, KeyError) as e:
-        reply, allow_html = _run_simulated(message, session_user)
-        notice = f"[⚠ Ollama unavailable ({type(e).__name__}); simulated fallback]\n"
-        return (notice + reply, allow_html)
+        reply, _ = _run_simulated(message, session_user)
+        reply = f"[⚠ Ollama unavailable ({type(e).__name__}); simulated fallback]\n" + reply
+
+    # [VULN #3 - Insecure Output Handling -> XSS | OWASP A03 | LLM02]
+    # Vulnerable mode renders the ASSISTANT'S OWN output as HTML (innerHTML in
+    # chat.js) with no sanitization. So any HTML/JS the model is talked into
+    # emitting executes in the victim's browser -- a genuine LLM-channel XSS.
+    allow_html = not SECURE_MODE
+    return (reply, allow_html)
