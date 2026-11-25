@@ -199,6 +199,7 @@ def _ollama_chat(messages):
             "messages": messages,
             "tools": TOOL_SCHEMAS,
             "stream": False,
+            "options": {"temperature": 0.4},  # steadier tool use on small models
         }
     ).encode()
     req = urllib.request.Request(
@@ -210,25 +211,66 @@ def _ollama_chat(messages):
         return json.loads(resp.read().decode())
 
 
+def _tool_call_from_text(content):
+    """
+    Small models (e.g. llama3.2:3b) sometimes emit a tool call as PLAIN TEXT
+    in the content instead of the structured `tool_calls` field, e.g.
+        {"name": "get_balance", "parameters": {"user_id": 2}}
+    Recover it so the agent still works (and the raw JSON never reaches the UI).
+    """
+    if not content:
+        return None
+    candidate = content.strip()
+    obj = None
+    try:
+        obj = json.loads(candidate)
+    except (json.JSONDecodeError, ValueError):
+        m = re.search(r"\{.*\}", candidate, re.S)
+        if m:
+            try:
+                obj = json.loads(m.group(0))
+            except (json.JSONDecodeError, ValueError):
+                obj = None
+    if isinstance(obj, dict) and obj.get("name") in TOOLS:
+        args = obj.get("parameters") or obj.get("arguments") or {}
+        if isinstance(args, str):
+            try:
+                args = json.loads(args)
+            except (json.JSONDecodeError, ValueError):
+                args = {}
+        return obj["name"], (args if isinstance(args, dict) else {})
+    return None
+
+
 def _run_ollama(message, session_user):
     messages = [
         {"role": "system", "content": build_system_prompt(session_user)},
         {"role": "user", "content": message},
     ]
     used_bios = False
-    last = {}
+    last_result = ""  # last tool output, used as a graceful fallback reply
 
     for _ in range(6):  # cap tool-call rounds
         data = _ollama_chat(messages)
-        msg = data.get("message", {})
-        last = msg
-        messages.append(msg)  # keep assistant turn (incl. tool_calls) in context
-
+        msg = data.get("message", {}) or {}
+        messages.append(msg)  # keep assistant turn in context
+        content = (msg.get("content") or "").strip()
         tool_calls = msg.get("tool_calls") or []
+
+        # Rescue a tool call the model wrote as text rather than structured.
         if not tool_calls:
-            # final answer
+            parsed = _tool_call_from_text(content)
+            if parsed:
+                tool_calls = [
+                    {"function": {"name": parsed[0], "arguments": parsed[1]}}
+                ]
+
+        if not tool_calls:
+            # Final natural-language answer. Hide stray scaffolding like "{}".
+            if content in ("", "{}", "{ }"):
+                content = last_result or "How can I help with your account?"
             allow_html = (not SECURE_MODE) and used_bios
-            return (msg.get("content", "") or "(no reply)", allow_html)
+            return (content, allow_html)
 
         for tc in tool_calls:
             fn = tc.get("function", {})
@@ -237,18 +279,20 @@ def _run_ollama(message, session_user):
             if isinstance(args, str):
                 try:
                     args = json.loads(args)
-                except json.JSONDecodeError:
+                except (json.JSONDecodeError, ValueError):
                     args = {}
             if name == "list_user_bios":
                 used_bios = True
             handler = TOOLS.get(name)
             result = handler(args, session_user) if handler else f"Unknown tool: {name}"
+            last_result = str(result)
             messages.append(
                 {"role": "tool", "tool_name": name, "content": str(result)}
             )
 
+    # Ran out of rounds: show the last tool result rather than raw scaffolding.
     allow_html = (not SECURE_MODE) and used_bios
-    return (last.get("content", "") or "(stopped after too many tool calls)", allow_html)
+    return (last_result or "(no reply)", allow_html)
 
 
 # ---------------------------------------------------------------------------
