@@ -137,8 +137,9 @@ if __name__ == "__main__":
     if not os.path.exists(DB_PATH):
         init_db()
     mode = "SECURE (patched)" if SECURE_MODE else "VULNERABLE"
+    port = int(os.environ.get("PORT", 5000))  # change with: PORT=5001 python3 app.py
     print("=" * 60)
     print(f"  SecureBank-AI  ::  running in {mode} mode")
-    print("  http://127.0.0.1:5000")
+    print(f"  http://127.0.0.1:{port}")
     print("=" * 60)
-    app.run(debug=True, host="127.0.0.1", port=5000)
+    app.run(debug=True, host="127.0.0.1", port=port)
